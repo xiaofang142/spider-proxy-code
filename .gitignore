@@ -1,0 +1,92 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+.pub-cache/
+.pub/
+.pub-token
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+*~
+
+# Android
+android/.gradle/
+android/captures/
+android/gradlew
+android/gradlew.bat
+android/local.properties
+android/**/build/
+android/**/.gradle/
+android/**/local.properties
+android/**/gradle.properties
+android/**/gradle-wrapper.properties
+android/app/release/
+android/app/debug/
+android/app/profile/
+*.keystore
+*.jks
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_assets/
+ios/Flutter/flutter_export_environment.sh
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
+*.DS_Store
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Environment
+.env
+.env.*
+*.env
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+tmp/
+temp/
+
+# Test coverage
+coverage/
+lcov.info
+
+# Secrets and credentials
+*.pem
+*.p12
+*.pfx
+*.key
+secrets/
+credentials/
+
+# Build artifacts
+*.aar
+*.so
+*.dylib
+*.dll
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
