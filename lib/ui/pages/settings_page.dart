@@ -5,8 +5,10 @@ import '../../core/proxy_service.dart';
 import 'certificate_install_guide_page.dart';
 import 'rewrite_rules_page.dart';
 import 'breakpoint_debugger_page.dart';
+import 'script_manager_page.dart';
 import '../../core/rewriter/request_rewriter.dart';
 import '../../core/debugger/breakpoint_debugger.dart';
+import '../../core/script/script_engine.dart';
 
 class SettingsPage extends StatefulWidget {
   final ProxyServiceManager proxyService;
@@ -80,6 +82,7 @@ class _SettingsPageState extends State<SettingsPage> {
             children: [
               _buildRewriteRules(),
               _buildBreakpointDebugger(),
+              _buildScriptManager(),
             ],
           ),
           const SizedBox(height: 20),
@@ -241,6 +244,25 @@ class _SettingsPageState extends State<SettingsPage> {
           MaterialPageRoute(
             builder: (context) => BreakpointDebuggerPage(
               debugger: BreakpointDebugger(),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildScriptManager() {
+    return ListTile(
+      leading: const Icon(Icons.code, color: Colors.orange),
+      title: const Text('脚本系统'),
+      subtitle: const Text('JavaScript 脚本拦截和修改'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ScriptManagerPage(
+              engine: ScriptEngine(),
             ),
           ),
         );
