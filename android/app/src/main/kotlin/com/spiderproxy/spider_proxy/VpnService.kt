@@ -124,6 +124,10 @@ class VpnService : Service() {
         val bufferStats = dynamicBuffer.getStats()
         Log.d(TAG, "Dynamic buffer final stats: $bufferStats")
 
+        // 记录连接池统计信息
+        val tcpPoolStats = tcpForwarder.getPoolStats()
+        Log.d(TAG, "TCP connection pool final stats: $tcpPoolStats")
+
         stopVpn()
         vpnScope.cancel()
         sslInterceptor.stop()

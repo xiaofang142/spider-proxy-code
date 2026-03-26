@@ -28,8 +28,19 @@ class TcpForwarder(
         private const val CONNECTION_TIMEOUT = 10000L // 10 seconds
     }
 
-    // 连接状态管理
-    private val connections = ConcurrentHashMap<Int, TcpConnection>()
+    // 连接池管理
+    private val connectionPool = ConnectionPool(
+        proxyAddress = proxyAddress,
+        proxyPort = proxyPort,
+        minIdle = 2,
+        maxIdle = 10,
+        maxTotal = 50,
+        idleTimeoutMs = 60000L,
+        connectionTimeoutMs = CONNECTION_TIMEOUT
+    )
+
+    // 活跃连接跟踪
+    private val activeConnections = ConcurrentHashMap<Int, PooledConnection>()
     private val selector = Selector.open()
 
     /// 处理 TCP 数据包
@@ -44,60 +55,47 @@ class TcpForwarder(
         val connectionId = generateConnectionId(srcAddress, srcPort, destAddress, destPort)
 
         // 获取或创建连接
-        var connection = connections[connectionId]
+        var connection = activeConnections[connectionId]
         if (connection == null) {
-            // 创建新连接
-            connection = createTcpConnection(
-                connectionId = connectionId,
-                srcAddress = srcAddress,
-                srcPort = srcPort,
-                destAddress = destAddress,
-                destPort = destPort
-            )
-            connections[connectionId] = connection
-
-            // 启动连接
+            // 从连接池获取连接
             vpnScope.launch {
                 try {
-                    connection.start()
-                    Log.d(TAG, "New TCP connection created: $connectionId")
+                    connection = connectionPool.acquire(destAddress, destPort)
+                    if (connection != null) {
+                        activeConnections[connectionId] = connection
+                        Log.d(TAG, "New TCP connection from pool: $connectionId -> $destAddress:$destPort")
+                    } else {
+                        Log.e(TAG, "Failed to acquire connection from pool: $connectionId")
+                        removeConnection(connectionId)
+                    }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to start connection: $connectionId", e)
+                    Log.e(TAG, "Error acquiring connection: $connectionId", e)
                     removeConnection(connectionId)
                 }
             }
         }
 
         // 发送数据
-        connection?.sendData(packet, packetSize)
-    }
-
-    /// 创建 TCP 连接
-    private fun createTcpConnection(
-        connectionId: Int,
-        srcAddress: String,
-        srcPort: Int,
-        destAddress: String,
-        destPort: Int
-    ): TcpConnection {
-        return TcpConnection(
-            connectionId = connectionId,
-            srcAddress = srcAddress,
-            srcPort = srcPort,
-            destAddress = destAddress,
-            destPort = destPort,
-            proxyAddress = proxyAddress,
-            proxyPort = proxyPort,
-            selector = selector,
-            onConnectionClosed = { removeConnection(connectionId) },
-            tunDeviceWriter = tunDeviceWriter
-        )
+        connection?.let { conn ->
+            vpnScope.launch {
+                try {
+                    val channel = conn.getChannel()
+                    val buffer = ByteBuffer.wrap(packet, 0, packetSize)
+                    channel.write(buffer)
+                    Log.d(TAG, "Sent ${packetSize} bytes to $destAddress:$destPort")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error sending data for $connectionId", e)
+                    removeConnection(connectionId)
+                }
+            }
+        }
     }
 
     /// 移除连接
     private fun removeConnection(connectionId: Int) {
-        connections.remove(connectionId)?.close()
-        Log.d(TAG, "Connection removed: $connectionId")
+        val connection = activeConnections.remove(connectionId)
+        connection?.release() // 释放回连接池
+        Log.d(TAG, "Connection released to pool: $connectionId")
     }
 
     /// 生成连接 ID
@@ -109,202 +107,29 @@ class TcpForwarder(
     /// 关闭所有连接
     fun close() {
         try {
-            connections.values.forEach { it.close() }
-            connections.clear()
+            // 关闭所有活跃连接
+            activeConnections.values.forEach { it.close() }
+            activeConnections.clear()
+
+            // 关闭连接池
+            connectionPool.close()
+
+            // 关闭 Selector
             selector.close()
-            Log.d(TAG, "TcpForwarder closed, ${connections.size} connections cleaned up")
+
+            // 记录统计信息
+            val stats = connectionPool.getStats()
+            Log.d(TAG, "TcpForwarder closed. Connection pool stats: $stats")
         } catch (e: Exception) {
             Log.e(TAG, "Error closing TcpForwarder", e)
         }
     }
 
     /// 获取活跃连接数
-    fun getActiveConnectionCount(): Int = connections.size
-}
+    fun getActiveConnectionCount(): Int = activeConnections.size
 
-/**
- * TCP 连接
- *
- * 管理单个 TCP 连接的双向数据转发
- */
-class TcpConnection(
-    private val connectionId: Int,
-    private val srcAddress: String,
-    private val srcPort: Int,
-    private val destAddress: String,
-    private val destPort: Int,
-    private val proxyAddress: String,
-    private val proxyPort: Int,
-    private val selector: Selector,
-    private val onConnectionClosed: (Int) -> Unit,
-    private val tunDeviceWriter: TunDeviceWriter? = null
-) {
-    companion object {
-        private const val TAG = "SpiderProxy.TcpConnection"
-    }
-
-    private var proxyChannel: SocketChannel? = null
-    private val dynamicInputBuffer = DynamicBuffer()
-    private val dynamicOutputBuffer = DynamicBuffer()
-    private var isConnected = false
-    private var connectionScope: CoroutineScope? = null
-
-    // 连接状态
-    enum class State {
-        CONNECTING,
-        CONNECTED,
-        CLOSING,
-        CLOSED
-    }
-
-    private var state = State.CONNECTING
-
-    /// 启动连接
-    suspend fun start() {
-        try {
-            // 1. 连接到代理服务器
-            proxyChannel = SocketChannel.open()
-            proxyChannel?.configureBlocking(false)
-            proxyChannel?.connect(InetSocketAddress(proxyAddress, proxyPort))
-
-            // 等待连接完成
-            withTimeout(TcpForwarder.CONNECTION_TIMEOUT) {
-                while (!proxyChannel?.finishConnect()!!) {
-                    delay(10)
-                }
-            }
-
-            // 2. 注册到 Selector
-            proxyChannel?.register(selector, SelectionKey.OP_READ)
-
-            isConnected = true
-            state = State.CONNECTED
-
-            Log.d(TAG, "Connection $connectionId established to proxy")
-
-            // 3. 启动数据转发
-            connectionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-            connectionScope?.launch {
-                forwardData()
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to connect for $connectionId", e)
-            state = State.CLOSED
-            onConnectionClosed(connectionId)
-        }
-    }
-
-    /// 发送数据到代理
-    fun sendData(packet: ByteArray, size: Int) {
-        if (!isConnected || state != State.CONNECTED) {
-            Log.w(TAG, "Cannot send data, connection not ready: $connectionId")
-            return
-        }
-
-        try {
-            val buffer = dynamicOutputBuffer.getBuffer()
-            buffer.put(packet, 0, size)
-            buffer.flip()
-
-            proxyChannel?.write(buffer)
-
-            // 调整缓冲区大小
-            dynamicOutputBuffer.adjust(size, isOverflow = size >= buffer.capacity())
-        } catch (e: Exception) {
-            Log.e(TAG, "Error sending data for $connectionId", e)
-            close()
-        }
-    }
-
-    /// 转发数据
-    private suspend fun forwardData() {
-        try {
-            while (isConnected && state == State.CONNECTED) {
-                // 使用 Selector 等待可读事件
-                val readyChannels = selector.select(1000)
-
-                if (readyChannels > 0) {
-                    val selectedKeys = selector.selectedKeys().iterator()
-
-                    while (selectedKeys.hasNext()) {
-                        val key = selectedKeys.next()
-                        selectedKeys.remove()
-
-                        if (key.isReadable) {
-                            readFromProxy()
-                        }
-                    }
-                }
-            }
-        } catch (e: CancellationException) {
-            Log.d(TAG, "Forward task cancelled for $connectionId")
-        } catch (e: Exception) {
-            if (state == State.CONNECTED) {
-                Log.e(TAG, "Error forwarding data for $connectionId", e)
-            }
-        } finally {
-            close()
-        }
-    }
-
-    /// 从代理读取数据
-    private fun readFromProxy() {
-        try {
-            val buffer = dynamicInputBuffer.getBuffer()
-            val bytesRead = proxyChannel?.read(buffer) ?: -1
-
-            if (bytesRead == -1) {
-                // EOF - 连接关闭
-                Log.d(TAG, "EOF received for connection $connectionId")
-                close()
-                return
-            }
-
-            if (bytesRead > 0) {
-                // 调整缓冲区大小
-                dynamicInputBuffer.adjust(bytesRead, isOverflow = bytesRead >= buffer.capacity())
-
-                buffer.flip()
-                val data = ByteArray(bytesRead)
-                buffer.get(data)
-
-                // 将数据写回 TUN 设备
-                tunDeviceWriter?.writeTcpResponse(
-                    tcpData = data,
-                    srcAddress = destAddress,
-                    srcPort = destPort,
-                    destAddress = srcAddress,
-                    destPort = srcPort
-                ) ?: run {
-                    // 简化实现：仅记录
-                    Log.d(TAG, "Read ${bytesRead} bytes from proxy for $connectionId")
-                }
-            }
-        } catch (e: IOException) {
-            Log.e(TAG, "Error reading from proxy for $connectionId", e)
-            close()
-        }
-    }
-
-    /// 关闭连接
-    fun close() {
-        if (state == State.CLOSED || state == State.CLOSING) return
-
-        state = State.CLOSING
-        isConnected = false
-
-        try {
-            proxyChannel?.close()
-            connectionScope?.cancel()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error closing connection $connectionId", e)
-        } finally {
-            state = State.CLOSED
-            onConnectionClosed(connectionId)
-            Log.d(TAG, "Connection $connectionId closed")
-        }
-    }
+    /// 获取连接池统计
+    fun getPoolStats(): Map<String, Any> = connectionPool.getStats()
 }
 
 /**

@@ -38,6 +38,19 @@ dependencies:
   # HTTP Client
   http: ^1.1.0
   dio: ^5.4.0
+  
+  # Utilities
+  uuid: ^4.2.1
+  path: ^1.8.3
+
+  # SSL/TLS Support
+  crypto: ^3.0.3
+  pkcs8: ^1.0.0
+  pointycastle: ^3.7.4
+
+  # Local Storage
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
 
 dev_dependencies:
   flutter_test:

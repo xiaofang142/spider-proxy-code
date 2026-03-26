@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Spider Proxy VPN 服务通知渠道 ID -->
+    <string name="vpn_notification_channel_id">spider_proxy_vpn_channel</string>
+    <string name="vpn_notification_channel_name">VPN 服务</string>
+    <string name="vpn_notification_content">VPN 服务运行中</string>
+
+    <!-- Spider Proxy 代理服务通知渠道 ID -->
+    <string name="proxy_notification_channel_id">spider_proxy_foreground_channel</string>
+    <string name="proxy_notification_channel_name">代理服务</string>
+    <string name="proxy_notification_content">代理服务运行中</string>
+
+    <!-- 应用名称 -->
+    <string name="app_name">Spider Proxy</string>
+</resources>
