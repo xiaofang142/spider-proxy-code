@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import '../../main.dart';
 import '../../core/proxy_service.dart';
+import 'certificate_install_guide_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final ProxyServiceManager proxyService;
@@ -296,48 +297,19 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _installCertificate() async {
-    try {
-      final success = await widget.proxyService.installCACertificate();
-      if (success && mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('CA 证书安装指南'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('请按照以下步骤安装 CA 证书：'),
-                  const SizedBox(height: 16),
-                  const Text('1. 打开设备设置'),
-                  const Text('2. 进入「安全」或「隐私」设置'),
-                  const Text('3. 找到「证书管理」或「加密和凭据」'),
-                  const Text('4. 选择「从存储安装 CA 证书」'),
-                  const Text('5. 选择 Spider Proxy 证书文件'),
-                  const Text('6. 设置锁屏密码（如果尚未设置）'),
-                  const Text('7. 为证书命名并确认安装'),
-                  const SizedBox(height: 16),
-                  const Text('安装完成后，重启 Spider Proxy 应用。',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-            actions: [
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('我知道了'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('证书安装失败：$e')),
-        );
-      }
+    // 跳转到证书安装引导页面
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CertificateInstallGuidePage(
+          proxyService: widget.proxyService,
+        ),
+      ),
+    );
+
+    // 返回后重新检查证书状态
+    if (mounted) {
+      setState(() {});
     }
   }
 
