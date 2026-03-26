@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'main.dart';
 import 'core/proxy_service.dart';
+import '../widgets/traffic_chart.dart';
 
 class HomePage extends StatefulWidget {
   final ProxyServiceManager proxyService;
@@ -13,6 +14,49 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  // 流量历史数据（用于图表）
+  final List<TrafficDataPoint> _uploadHistory = [];
+  final List<TrafficDataPoint> _downloadHistory = [];
+  Timer? _historyTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // 每分钟记录一次流量数据
+    _historyTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      _updateTrafficHistory();
+    });
+  }
+
+  @override
+  void dispose() {
+    _historyTimer?.cancel();
+    super.dispose();
+  }
+
+  void _updateTrafficHistory() {
+    setState(() {
+      final now = DateTime.now();
+      // 添加当前上传数据
+      _uploadHistory.add(TrafficDataPoint(
+        timestamp: now,
+        bytes: 0, // 实际应从 Redux state 获取累计值
+      ));
+      // 添加当前下载数据
+      _downloadHistory.add(TrafficDataPoint(
+        timestamp: now,
+        bytes: 0,
+      ));
+
+      // 保持最近 60 个数据点（10 分钟）
+      if (_uploadHistory.length > 60) {
+        _uploadHistory.removeAt(0);
+      }
+      if (_downloadHistory.length > 60) {
+        _downloadHistory.removeAt(0);
+      }
+    });
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -34,6 +78,10 @@ class _HomePageState extends State<HomePage> {
                 // 实时流量统计
                 if (state.isProxyRunning && state.trafficStats != null)
                   _buildTrafficStats(state.trafficStats!),
+                const SizedBox(height: 20),
+                // 流量趋势图表
+                if (state.isProxyRunning && _uploadHistory.isNotEmpty)
+                  _buildTrafficChart(state),
                 const SizedBox(height: 20),
                 // 统计信息
                 _buildStatsCards(state),
@@ -233,6 +281,43 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 流量趋势图表
+  Widget _buildTrafficChart(AppState state) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '流量趋势',
+                  style: Theme.of(ThemeData()).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                Text(
+                  '最近 ${_uploadHistory.length * 10} 秒',
+                  style: Theme.of(ThemeData()).textTheme.bodySmall,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TrafficChart(
+              uploadData: _uploadHistory,
+              downloadData: _downloadHistory,
+              height: 180,
+              showPeak: true,
             ),
           ],
         ),
