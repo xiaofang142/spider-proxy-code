@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'script_engine.dart';
+import '../../core/script/script_engine_v2.dart';
 
-/// 脚本管理页面
+/// 脚本管理页面 (支持 v2 引擎)
 class ScriptManagerPage extends StatefulWidget {
-  final ScriptEngine engine;
+  final ScriptEngineV2 engine;
 
   const ScriptManagerPage({super.key, required this.engine});
 
@@ -95,7 +96,7 @@ class _ScriptManagerPageState extends State<ScriptManagerPage> {
     );
   }
 
-  final ValueNotifier<List<Script>> _scriptsNotifier = ValueNotifier([]);
+  final ValueNotifier<List<ScriptV2>> _scriptsNotifier = ValueNotifier([]);
 
   @override
   void initState() {
@@ -111,11 +112,11 @@ class _ScriptManagerPageState extends State<ScriptManagerPage> {
     widget.engine.loadBuiltInTemplates();
     _updateScripts();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已加载内置脚本模板')),
+      const SnackBar(content: Text('已加载内置脚本模板 (v3.0)')),
     );
   }
 
-  Widget _buildScriptCard(Script script) {
+  Widget _buildScriptCard(ScriptV2 script) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
@@ -353,10 +354,10 @@ class _ScriptManagerPageState extends State<ScriptManagerPage> {
   }
 }
 
-/// 脚本编辑器对话框
+/// 脚本编辑器对话框 (v3.0)
 class _ScriptEditorDialog extends StatefulWidget {
-  final ScriptEngine engine;
-  final Script? script;
+  final ScriptEngineV2 engine;
+  final ScriptV2? script;
   final VoidCallback onSave;
 
   const _ScriptEditorDialog({
@@ -459,25 +460,29 @@ class _ScriptEditorDialogState extends State<_ScriptEditorDialog> {
               const SizedBox(height: 16),
               const Text('脚本代码', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              SizedBox(
+              Container(
                 height: 300,
-                child: TextFormField(
-                  controller: _codeController,
-                  decoration: const InputDecoration(
-                    hintText: '// JavaScript 代码\nfunction onRequest(context) {\n  // ...\n}',
-                    border: OutlineInputBorder(),
-                    alignLabelWithHint: true,
-                  ),
-                  maxLines: null,
-                  expands: true,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return '请输入脚本代码';
-                    }
-                    return null;
-                  },
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade400),
+                  borderRadius: BorderRadius.circular(4),
                 ),
+                child: SingleChildScrollView(
+                  child: TextField(
+                    controller: _codeController,
+                    decoration: const InputDecoration(
+                      hintText: '// JavaScript 代码\nimport \'proxy://context\' as context;\n\nvoid onRequest(ctx) {\n  ctx.setHeader(\'X-Custom\', \'SpiderProxy\');\n}',
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.all(8),
+                    ),
+                    maxLines: null,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'v3.0 脚本使用 dart_eval 沙盒执行，支持标准 JavaScript 语法',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
               ),
             ],
           ),
@@ -498,7 +503,7 @@ class _ScriptEditorDialogState extends State<_ScriptEditorDialog> {
 
   void _saveScript() {
     if (_formKey.currentState!.validate()) {
-      final script = Script(
+      final script = ScriptV2(
         id: widget.script?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
         name: _nameController.text,
         description: _descriptionController.text.isEmpty ? null : _descriptionController.text,
