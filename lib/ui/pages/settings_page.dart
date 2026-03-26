@@ -3,6 +3,8 @@ import 'package:flutter_redux/flutter_redux.dart';
 import '../../main.dart';
 import '../../core/proxy_service.dart';
 import 'certificate_install_guide_page.dart';
+import 'rewrite_rules_page.dart';
+import '../../core/rewriter/request_rewriter.dart';
 
 class SettingsPage extends StatefulWidget {
   final ProxyServiceManager proxyService;
@@ -66,6 +68,15 @@ class _SettingsPageState extends State<SettingsPage> {
             children: [
               _buildStorageLocation(),
               _buildClearData(),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // 高级功能
+          _buildSection(
+            title: '高级功能',
+            children: [
+              _buildRewriteRules(),
             ],
           ),
           const SizedBox(height: 20),
@@ -193,6 +204,25 @@ class _SettingsPageState extends State<SettingsPage> {
       title: const Text('清空所有数据', style: TextStyle(color: Colors.red)),
       subtitle: const Text('删除所有抓包记录和设置'),
       onTap: () => _confirmClearData(),
+    );
+  }
+
+  Widget _buildRewriteRules() {
+    return ListTile(
+      leading: const Icon(Icons.edit, color: Colors.blue),
+      title: const Text('请求重写'),
+      subtitle: const Text('修改 Header、URL 重定向、请求重放'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => RewriteRulesPage(
+              rewriter: RequestRewriter(),
+            ),
+          ),
+        );
+      },
     );
   }
 
