@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import '../../main.dart';
 import '../../core/proxy_service.dart';
+import '../../core/export/har_exporter.dart';
+import '../../core/export/pcap_exporter.dart';
+import '../dialogs/export_dialog.dart';
 import 'request_detail_page.dart';
 
 class CaptureListPage extends StatefulWidget {
@@ -64,11 +67,18 @@ class _CaptureListPageState extends State<CaptureListPage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
+            icon: const Icon(Icons.file_download),
+            tooltip: '导出',
+            onPressed: () => _showExportDialog(context),
+          ),
+          IconButton(
             icon: const Icon(Icons.filter_list),
+            tooltip: '过滤',
             onPressed: () => _showFilterDialog(context),
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
+            tooltip: '清空',
             onPressed: () => _confirmClearCaptures(context),
           ),
         ],
@@ -470,6 +480,66 @@ class _CaptureListPageState extends State<CaptureListPage> {
         ],
       ),
     );
+  }
+
+  void _showExportDialog(BuildContext context) {
+    showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => const ExportDialog(),
+    ).then((result) {
+      if (result != null && context.mounted) {
+        final format = result['format'] as ExportFormat;
+        final captures = result['captures'] as List<CaptureItem>;
+        _exportCaptures(context, captures, format);
+      }
+    });
+  }
+
+  Future<void> _exportCaptures(
+    BuildContext context,
+    List<CaptureItem> captures,
+    ExportFormat format,
+  ) async {
+    try {
+      String content;
+      String fileExtension;
+      String mimeType;
+
+      switch (format) {
+        case ExportFormat.har:
+          content = HarExporter.export(captures);
+          fileExtension = 'har';
+          mimeType = 'application/json';
+          break;
+        case ExportFormat.pcap:
+          // PCAP 是二进制格式
+          final bytes = PcapExporter.export(captures);
+          content = latin1.decode(bytes);
+          fileExtension = 'pcap';
+          mimeType = 'application/vnd.tcpdump.pcap';
+          break;
+      }
+
+      // TODO: 使用 file_saver 包保存到文件
+      // 这里显示一个提示
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已导出 ${captures.length} 条记录为 ${fileExtension.toUpperCase()} 格式'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('导出失败：$e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _navigateToDetail(BuildContext context, CaptureItem capture) {
