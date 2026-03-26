@@ -4,7 +4,9 @@ import '../../main.dart';
 import '../../core/proxy_service.dart';
 import 'certificate_install_guide_page.dart';
 import 'rewrite_rules_page.dart';
+import 'breakpoint_debugger_page.dart';
 import '../../core/rewriter/request_rewriter.dart';
+import '../../core/debugger/breakpoint_debugger.dart';
 
 class SettingsPage extends StatefulWidget {
   final ProxyServiceManager proxyService;
@@ -77,6 +79,7 @@ class _SettingsPageState extends State<SettingsPage> {
             title: '高级功能',
             children: [
               _buildRewriteRules(),
+              _buildBreakpointDebugger(),
             ],
           ),
           const SizedBox(height: 20),
@@ -219,6 +222,25 @@ class _SettingsPageState extends State<SettingsPage> {
           MaterialPageRoute(
             builder: (context) => RewriteRulesPage(
               rewriter: RequestRewriter(),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildBreakpointDebugger() {
+    return ListTile(
+      leading: const Icon(Icons.pause_circle, color: Colors.purple),
+      title: const Text('断点调试'),
+      subtitle: const Text('请求/响应前断点，修改后继续'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => BreakpointDebuggerPage(
+              debugger: BreakpointDebugger(),
             ),
           ),
         );
