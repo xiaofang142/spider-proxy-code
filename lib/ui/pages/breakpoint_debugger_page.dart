@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'breakpoint_debugger.dart';
+import '../dialogs/breakpoint_editor_dialog.dart';
 
 /// 断点调试页面
 class BreakpointDebuggerPage extends StatefulWidget {
@@ -504,9 +505,23 @@ class _BreakpointDebuggerPageState extends State<BreakpointDebuggerPage> {
   }
 
   void _modifyRequest(BreakpointRequest request) {
-    // TODO: 显示修改对话框
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('修改功能开发中...')),
+    showDialog(
+      context: context,
+      builder: (context) => BreakpointEditorDialog(
+        request: request,
+        onSaveRequest: (url, method, headers, body) {
+          // 修改后继续发送
+          widget.debugger.resumeRequestWithModifications(
+            url: url,
+            method: method,
+            headers: headers,
+            body: body,
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('请求已修改并发送')),
+          );
+        },
+      ),
     );
   }
 
@@ -525,9 +540,22 @@ class _BreakpointDebuggerPageState extends State<BreakpointDebuggerPage> {
   }
 
   void _modifyResponse(BreakpointResponse response) {
-    // TODO: 显示修改对话框
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('修改功能开发中...')),
+    showDialog(
+      context: context,
+      builder: (context) => BreakpointEditorDialog(
+        response: response,
+        onSaveResponse: (statusCode, headers, body) {
+          // 修改后继续返回
+          widget.debugger.resumeResponseWithModifications(
+            statusCode: statusCode,
+            headers: headers,
+            body: body,
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('响应已修改并返回')),
+          );
+        },
+      ),
     );
   }
 

@@ -147,6 +147,34 @@ class BreakpointDebugger {
     );
   }
 
+  /// 修改并继续请求（带返回值）
+  void resumeRequestWithModifications({
+    required String url,
+    required String method,
+    required Map<String, String> headers,
+    required String body,
+  }) {
+    _pausedRequest = _pausedRequest?.copyWith(
+      url: url,
+      method: method,
+      headers: headers,
+      body: body,
+    );
+  }
+
+  /// 修改并继续响应（带返回值）
+  void resumeResponseWithModifications({
+    required int statusCode,
+    required Map<String, String> headers,
+    required String body,
+  }) {
+    _pausedResponse = _pausedResponse?.copyWith(
+      statusCode: statusCode,
+      headers: headers,
+      body: body,
+    );
+  }
+
   /// 修改并继续响应
   void modifyAndResumeResponse(String url, int statusCode, Map<String, String> headers, String body) {
     _pausedResponse = _pausedResponse?.copyWith(
