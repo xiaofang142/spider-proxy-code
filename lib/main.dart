@@ -5,6 +5,7 @@ import 'package:redux/redux.dart';
 import 'ui/pages/home_page.dart';
 import 'ui/pages/capture_list_page.dart';
 import 'ui/pages/settings_page.dart';
+import 'ui/pages/analysis_page.dart';
 import 'core/proxy_service.dart';
 import 'core/models/traffic_record.dart';
 
@@ -236,6 +237,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     super.initState();
     _pages.addAll([
       HomePage(proxyService: _proxyService),
+      AnalysisPage(),
       CaptureListPage(proxyService: _proxyService),
       SettingsPage(proxyService: _proxyService),
     ]);
@@ -281,6 +283,10 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
           NavigationDestination(
             icon: Icon(Icons.dashboard),
             label: '首页',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.analytics),
+            label: '分析',
           ),
           NavigationDestination(
             icon: Icon(Icons.list),

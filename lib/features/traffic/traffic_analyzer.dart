@@ -169,10 +169,183 @@ class TrafficAnalyzer {
 
     final anomalies = <TrafficAnomaly>[];
 
-    // 检测流量突增
-    // TODO: 实现更复杂的异常检测算法
+    if (records.isEmpty) return anomalies;
+
+    // 1. 检测流量突增 (> 200% 基线)
+    anomalies.addAll(_detectTrafficSpikes(records));
+
+    // 2. 检测错误率异常 (> 10%)
+    anomalies.addAll(_detectErrorSpikes(records));
+
+    // 3. 检测响应时间异常 (> 3σ)
+    anomalies.addAll(_detectSlowDowns(records));
+
+    // 4. 检测可疑活动
+    anomalies.addAll(_detectSuspiciousActivity(records));
 
     return anomalies;
+  }
+
+  /// 检测流量突增
+  List<TrafficAnomaly> _detectTrafficSpikes(List<TrafficRecord> records) {
+    final anomalies = <TrafficAnomaly>[];
+
+    // 按小时分组统计请求数
+    final hourlyCounts = <String, int>{};
+    for (final record in records) {
+      final hourKey = '${record.timestamp.year}-${record.timestamp.month}-${record.timestamp.day}-${record.timestamp.hour}';
+      hourlyCounts[hourKey] = (hourlyCounts[hourKey] ?? 0) + 1;
+    }
+
+    if (hourlyCounts.length < 2) return anomalies;
+
+    final counts = hourlyCounts.values.toList();
+    final avgCount = counts.reduce((a, b) => a + b) / counts.length;
+    final baseline = avgCount;
+
+    for (final entry in hourlyCounts.entries) {
+      if (entry.value > baseline * 3) {
+        anomalies.add(TrafficAnomaly(
+          type: AnomalyType.trafficSpike,
+          description: '流量突增：${entry.key} 时段请求数 (${entry.value}) 超过基线 (${baseline.toStringAsFixed(0)}) 的 3 倍',
+          detectedAt: DateTime.now(),
+          context: {
+            'hour': entry.key,
+            'count': entry.value,
+            'baseline': baseline,
+            'ratio': entry.value / baseline,
+          },
+        ));
+      }
+    }
+
+    return anomalies;
+  }
+
+  /// 检测错误率异常
+  List<TrafficAnomaly> _detectErrorSpikes(List<TrafficRecord> records) {
+    final anomalies = <TrafficAnomaly>[];
+
+    final errorCount = records.where((r) => r.statusCode >= 400).length;
+    final errorRate = errorCount / records.length;
+
+    if (errorRate > 0.1) {
+      anomalies.add(TrafficAnomaly(
+        type: AnomalyType.errorSpike,
+        description: '错误率异常：${(errorRate * 100).toStringAsFixed(1)}% 的请求返回错误 (${errorCount}/${records.length})',
+        detectedAt: DateTime.now(),
+        context: {
+          'errorCount': errorCount,
+          'totalCount': records.length,
+          'errorRate': errorRate,
+        },
+      ));
+    }
+
+    return anomalies;
+  }
+
+  /// 检测响应时间异常
+  List<TrafficAnomaly> _detectSlowDowns(List<TrafficRecord> records) {
+    final anomalies = <TrafficAnomaly>[];
+
+    final durations = records.map((r) => r.durationMs).toList();
+    if (durations.length < 10) return anomalies;
+
+    final avgDuration = durations.reduce((a, b) => a + b) / durations.length;
+    final variance = durations.fold<double>(
+      0,
+      (sum, d) => sum + (d - avgDuration) * (d - avgDuration),
+    );
+    final stdDev = (variance / durations.length).sqrt();
+
+    // 检测超过 3 个标准差的请求
+    final threshold = avgDuration + 3 * stdDev;
+    final slowRequests = records.where((r) => r.durationMs > threshold).toList();
+
+    if (slowRequests.isNotEmpty && stdDev > 0) {
+      anomalies.add(TrafficAnomaly(
+        type: AnomalyType.slowDown,
+        description: '响应时间异常：${slowRequests.length} 个请求超过阈值 (${threshold.toStringAsFixed(0)}ms)',
+        detectedAt: DateTime.now(),
+        context: {
+          'avgDuration': avgDuration.toStringAsFixed(0),
+          'stdDev': stdDev.toStringAsFixed(0),
+          'threshold': threshold.toStringAsFixed(0),
+          'slowCount': slowRequests.length,
+        },
+      ));
+    }
+
+    return anomalies;
+  }
+
+  /// 检测可疑活动
+  List<TrafficAnomaly> _detectSuspiciousActivity(List<TrafficRecord> records) {
+    final anomalies = <TrafficAnomaly>[];
+
+    // 检测同一域名的高频请求（可能为爬虫或攻击）
+    final hostCounts = <String, int>{};
+    for (final record in records) {
+      hostCounts[record.host] = (hostCounts[record.host] ?? 0) + 1;
+    }
+
+    for (final entry in hostCounts.entries) {
+      // 单个域名超过总请求数的 50%
+      if (entry.value > records.length * 0.5 && entry.value > 100) {
+        anomalies.add(TrafficAnomaly(
+          type: AnomalyType.securityThreat,
+          description: '可疑活动：${entry.key} 请求过于集中 (${entry.value}/${records.length})',
+          detectedAt: DateTime.now(),
+          context: {
+            'host': entry.key,
+            'count': entry.value,
+            'totalCount': records.length,
+            'ratio': entry.value / records.length,
+          },
+        ));
+      }
+    }
+
+    return anomalies;
+  }
+
+  /// 获取 IP 段分布
+  Map<String, int> getIpDistribution(List<TrafficRecord> records) {
+    final ipSegments = <String, int>{};
+
+    for (final record in records) {
+      // 从域名解析 IP 段（简化实现，实际应该从网络层获取）
+      final ipSegment = _extractIpSegment(record.host);
+      ipSegments[ipSegment] = (ipSegments[ipSegment] ?? 0) + 1;
+    }
+
+    return Map<String, int>.fromEntries(
+      ipSegments.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
+    );
+  }
+
+  /// 从域名提取 IP 段（简化实现）
+  String _extractIpSegment(String host) {
+    // 提取主域名作为 IP 段的代理
+    // 例如：api.github.com -> github.com
+    final parts = host.split('.');
+    if (parts.length >= 2) {
+      return parts.sublist(parts.length - 2).join('.');
+    }
+    return host;
+  }
+}
+
+// 为 double 添加 sqrt 扩展
+extension on num {
+  double sqrt() {
+    if (this <= 0) return 0;
+    double guess = this / 2;
+    for (int i = 0; i < 10; i++) {
+      guess = (guess + this / guess) / 2;
+    }
+    return guess;
   }
 }
 
