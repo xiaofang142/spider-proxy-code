@@ -6,6 +6,78 @@ library websocket_proxy;
 import 'dart:async';
 import 'dart:convert';
 
+/// WebSocket 帧
+///
+/// 表示 RFC 6455 定义的 WebSocket 帧结构
+class WebSocketFrame {
+  final bool fin;           // FIN bit - 是否为最后一片帧
+  final int rsv;            // RSV1-3 (3 bits), 值范围 0-7
+  final int rsv1;           // RSV1 - 压缩时为 1
+  final int rsv2;           // RSV2
+  final int rsv3;           // RSV3
+  final int opcode;         // Opcode (4 bits) - 操作码
+  final bool masked;        // MASK bit - 是否使用掩码
+  final int payloadLength;  // Payload length - 负载数据长度
+  final int? extendedPayloadLength; // 扩展长度 (16/64 bit)
+  final List<int>? maskingKey; // 掩码 key (如果 MASK=1)
+
+  WebSocketFrame({
+    required this.fin,
+    this.rsv = 0,
+    this.rsv1 = 0,
+    this.rsv2 = 0,
+    this.rsv3 = 0,
+    required this.opcode,
+    required this.masked,
+    required this.payloadLength,
+    this.extendedPayloadLength,
+    this.maskingKey,
+  });
+
+  /// 获取 Opcode 文本
+  String get opcodeText {
+    switch (opcode) {
+      case 0x0: return 'Continuation';
+      case 0x1: return 'Text';
+      case 0x2: return 'Binary';
+      case 0x8: return 'Close';
+      case 0x9: return 'Ping';
+      case 0xA: return 'Pong';
+      default: return 'Unknown (0x${opcode.toRadixString(16)})';
+    }
+  }
+
+  /// 获取实际 payload 长度
+  int get actualPayloadLength {
+    if (payloadLength < 126) {
+      return payloadLength;
+    } else if (payloadLength == 126) {
+      return extendedPayloadLength ?? 0;
+    } else {
+      // 64-bit length
+      return extendedPayloadLength ?? 0;
+    }
+  }
+
+  /// 是否压缩（RSV1=1）
+  bool get isCompressed => rsv1 == 1;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'fin': fin,
+      'rsv': rsv,
+      'rsv1': rsv1,
+      'rsv2': rsv2,
+      'rsv3': rsv3,
+      'opcode': opcode,
+      'opcodeText': opcodeText,
+      'masked': masked,
+      'payloadLength': payloadLength,
+      'isCompressed': isCompressed,
+    };
+  }
+}
+
 /// WebSocket 代理
 class WebSocketProxy {
   final _connections = <WebSocketConnection>{};
@@ -152,12 +224,22 @@ class WebSocketConnection {
   int? closeCode;
   String? closeReason;
 
+  // v3.2 压缩支持
+  final bool isCompressed;
+
   WebSocketConnection({
     required this.id,
     required this.url,
     this.headers = const {},
     this.protocols,
+    this.isCompressed = false,
   }) : connectedAt = DateTime.now();
+
+  /// 获取压缩率
+  double get compressionRatio {
+    // TODO: 实现压缩统计
+    return 0.0;
+  }
 
   /// 获取连接时长
   Duration get connectionDuration => DateTime.now().difference(connectedAt);
@@ -244,6 +326,9 @@ class WebSocketMessage {
   final MessageType type;
   final dynamic payload;
 
+  // v3.2 帧信息
+  final WebSocketFrame? frame;
+
   WebSocketMessage({
     required this.id,
     required this.connectionId,
@@ -251,6 +336,7 @@ class WebSocketMessage {
     required this.direction,
     required this.type,
     required this.payload,
+    this.frame,
   });
 
   /// 获取消息大小
@@ -326,6 +412,7 @@ class WebSocketMessage {
       'type': type.name,
       'size': size,
       if (payload is String) 'payload': payload,
+      if (frame != null) 'frame': frame!.toJson(),
     };
   }
 
@@ -341,6 +428,18 @@ class WebSocketMessage {
         (e) => e.name == json['type'],
       ),
       payload: json['payload'] ?? '',
+      frame: json['frame'] != null
+          ? WebSocketFrame(
+              fin: json['frame']['fin'] as bool,
+              rsv: json['frame']['rsv'] as int? ?? 0,
+              rsv1: json['frame']['rsv1'] as int? ?? 0,
+              rsv2: json['frame']['rsv2'] as int? ?? 0,
+              rsv3: json['frame']['rsv3'] as int? ?? 0,
+              opcode: json['frame']['opcode'] as int,
+              masked: json['frame']['masked'] as bool,
+              payloadLength: json['frame']['payloadLength'] as int,
+            )
+          : null,
     );
   }
 }
@@ -355,6 +454,10 @@ class WebSocketHandshake {
   final Map<String, String>? responseHeaders;
   final int? statusCode;
 
+  // v3.2 扩展支持
+  final String? secWebSocketExtensions;    // 请求扩展
+  final String? secWebSocketExtensionsResponse; // 响应扩展
+
   WebSocketHandshake({
     required this.id,
     required this.connectionId,
@@ -363,7 +466,15 @@ class WebSocketHandshake {
     this.requestHeaders = const {},
     this.responseHeaders,
     this.statusCode,
+    this.secWebSocketExtensions,
+    this.secWebSocketExtensionsResponse,
   });
+
+  /// 判断是否启用压缩
+  bool shouldEnableCompression() {
+    if (secWebSocketExtensionsResponse == null) return false;
+    return secWebSocketExtensionsResponse!.contains('permessage-deflate');
+  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -374,6 +485,8 @@ class WebSocketHandshake {
       'requestHeaders': requestHeaders,
       if (responseHeaders != null) 'responseHeaders': responseHeaders,
       if (statusCode != null) 'statusCode': statusCode,
+      if (secWebSocketExtensions != null) 'secWebSocketExtensions': secWebSocketExtensions,
+      if (secWebSocketExtensionsResponse != null) 'secWebSocketExtensionsResponse': secWebSocketExtensionsResponse,
     };
   }
 }

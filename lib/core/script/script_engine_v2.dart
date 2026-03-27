@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:dart_eval/dart_eval.dart';
 import 'package:dart_eval/dart_eval_bridge.dart';
 import 'package:dart_eval/stdlib/core.dart';
+import 'script_log.dart';
 
 /// 完整 JavaScript 引擎
 class ScriptEngineV2 {
@@ -15,11 +16,17 @@ class ScriptEngineV2 {
   bool _enabled = true;
   final List<ScriptV2> _scripts = [];
 
+  // v3.2 日志管理器
+  final ScriptLogManager _logManager = ScriptLogManager();
+
   /// 是否启用
   bool get enabled => _enabled;
 
   /// 获取所有脚本
   List<ScriptV2> get scripts => List.unmodifiable(_scripts);
+
+  /// 获取日志管理器
+  ScriptLogManager get logManager => _logManager;
 
   /// 初始化引擎
   Future<void> initialize() async {
@@ -48,16 +55,29 @@ class ScriptEngineV2 {
       'ScriptContext.abort': ScriptContextBridge.abortMethod,
     });
 
-    // 注册工具函数
+    // 注册工具函数（v3.2 增强版 - 集成日志）
     _vm!.registerLibrary('proxy://utils', {
       'print': Func1((msg) {
-        print('[Script] $msg');
+        _logManager.addLog(ScriptExecutionLog(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          scriptId: _currentScriptId ?? 'unknown',
+          scriptName: _currentScriptName ?? 'unknown',
+          timestamp: DateTime.now(),
+          level: ScriptLogLevel.info,
+          message: msg as String,
+          contextType: _currentContextType,
+        ));
         return null;
       }),
       'jsonDecode': Func1((str) => json.decode(str as String)),
       'jsonEncode': Func1((obj) => json.encode(obj)),
     });
   }
+
+  // 当前脚本执行上下文
+  String? _currentScriptId;
+  String? _currentScriptName;
+  String? _currentContextType;
 
   /// 启用引擎
   void enable() {
@@ -100,7 +120,7 @@ class ScriptEngineV2 {
     _scripts.clear();
   }
 
-  /// 执行 onRequest 脚本
+  /// 执行 onRequest 脚本（v3.2 增强版 - 集成日志）
   Future<ScriptContext?> executeOnRequest(
     String url,
     String method,
@@ -114,6 +134,10 @@ class ScriptEngineV2 {
       if (!script.enabled) continue;
       if (script.type != ScriptType.onRequest && script.type != ScriptType.universal) continue;
 
+      _currentScriptId = script.id;
+      _currentScriptName = script.name;
+      _currentContextType = 'onRequest';
+
       try {
         final context = ScriptContext(
           url: url,
@@ -124,17 +148,35 @@ class ScriptEngineV2 {
 
         final result = await _executeScript(script.code, context, 'onRequest');
         if (result != null && result.modified) {
+          _logManager.addLog(ScriptExecutionLog(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            scriptId: script.id,
+            scriptName: script.name,
+            timestamp: DateTime.now(),
+            level: ScriptLogLevel.info,
+            message: 'Request modified successfully',
+            contextType: 'onRequest',
+          ));
           return result;
         }
-      } catch (e) {
-        print('[ScriptEngineV2] Error executing onRequest "${script.name}": $e');
+      } catch (e, stackTrace) {
+        _logManager.addLog(ScriptExecutionLog(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          scriptId: script.id,
+          scriptName: script.name,
+          timestamp: DateTime.now(),
+          level: ScriptLogLevel.error,
+          message: 'Error: ${e.toString()}',
+          stackTrace: stackTrace.toString(),
+          contextType: 'onRequest',
+        ));
       }
     }
 
     return null;
   }
 
-  /// 执行 onResponse 脚本
+  /// 执行 onResponse 脚本（v3.2 增强版 - 集成日志）
   Future<ScriptContext?> executeOnResponse(
     String url,
     int statusCode,
@@ -148,6 +190,10 @@ class ScriptEngineV2 {
       if (!script.enabled) continue;
       if (script.type != ScriptType.onResponse && script.type != ScriptType.universal) continue;
 
+      _currentScriptId = script.id;
+      _currentScriptName = script.name;
+      _currentContextType = 'onResponse';
+
       try {
         final context = ScriptContext(
           url: url,
@@ -158,10 +204,28 @@ class ScriptEngineV2 {
 
         final result = await _executeScript(script.code, context, 'onResponse');
         if (result != null && result.modified) {
+          _logManager.addLog(ScriptExecutionLog(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            scriptId: script.id,
+            scriptName: script.name,
+            timestamp: DateTime.now(),
+            level: ScriptLogLevel.info,
+            message: 'Response modified successfully',
+            contextType: 'onResponse',
+          ));
           return result;
         }
-      } catch (e) {
-        print('[ScriptEngineV2] Error executing onResponse "${script.name}": $e');
+      } catch (e, stackTrace) {
+        _logManager.addLog(ScriptExecutionLog(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          scriptId: script.id,
+          scriptName: script.name,
+          timestamp: DateTime.now(),
+          level: ScriptLogLevel.error,
+          message: 'Error: ${e.toString()}',
+          stackTrace: stackTrace.toString(),
+          contextType: 'onResponse',
+        ));
       }
     }
 

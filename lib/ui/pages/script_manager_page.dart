@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'script_engine.dart';
 import '../../core/script/script_engine_v2.dart';
+import '../../core/script/script_log.dart';
+import '../widgets/script_log_view.dart';
 
 /// 脚本管理页面 (支持 v2 引擎)
 class ScriptManagerPage extends StatefulWidget {
@@ -218,6 +220,12 @@ class _ScriptManagerPageState extends State<ScriptManagerPage> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton.icon(
+                    onPressed: () => _viewLogs(context, script),
+                    icon: const Icon(Icons.article, size: 16),
+                    label: const Text('日志', style: TextStyle(fontSize: 13)),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
                     onPressed: () => _runScript(context, script),
                     icon: const Icon(Icons.play_arrow, size: 16),
                     label: const Text('运行', style: TextStyle(fontSize: 13)),
@@ -301,7 +309,7 @@ class _ScriptManagerPageState extends State<ScriptManagerPage> {
     );
   }
 
-  void _showEditScriptDialog(BuildContext context, Script script) {
+  void _showEditScriptDialog(BuildContext context, ScriptV2 script) {
     showDialog(
       context: context,
       builder: (context) => _ScriptEditorDialog(
@@ -312,7 +320,7 @@ class _ScriptManagerPageState extends State<ScriptManagerPage> {
     );
   }
 
-  void _deleteScript(BuildContext context, Script script) {
+  void _deleteScript(BuildContext context, ScriptV2 script) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -340,13 +348,22 @@ class _ScriptManagerPageState extends State<ScriptManagerPage> {
     );
   }
 
-  void _runScript(BuildContext context, Script script) {
+  void _runScript(BuildContext context, ScriptV2 script) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('脚本"${script.name}"已启用')),
     );
   }
 
-  void _exportScript(BuildContext context, Script script) {
+  void _viewLogs(BuildContext context, ScriptV2 script) {
+    openScriptLogView(
+      context: context,
+      logManager: widget.engine.logManager,
+      scriptId: script.id,
+      scriptName: script.name,
+    );
+  }
+
+  void _exportScript(BuildContext context, ScriptV2 script) {
     // TODO: 实现导出功能
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('导出功能开发中...')),
