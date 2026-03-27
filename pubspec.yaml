@@ -58,6 +58,9 @@ dependencies:
   # Code Highlight (v3.0)
   flutter_highlight: ^0.7.0
 
+  # File Watcher (v3.1)
+  watcher: ^1.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

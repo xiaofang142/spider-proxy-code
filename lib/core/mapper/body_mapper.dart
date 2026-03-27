@@ -3,8 +3,13 @@
 /// 支持 Map Local (本地文件替换) 和 Map Remote (远程响应替换)
 library body_mapper;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
+import 'package:watcher/watcher.dart';
 
 /// 请求体/响应体替换引擎
 class BodyMapper {
@@ -264,17 +269,63 @@ class BodyMapperRule {
   }
 
   /// 应用本地文件替换
-  Future<String?> _applyLocal(String path) async {
+  Future<String?> _applyLocal(String requestPath) async {
+    // 路径安全校验
+    final isSafe = await _isSafePath(requestPath);
+    if (!isSafe) {
+      print('[BodyMapper] Unsafe path blocked: $requestPath');
+      return null;
+    }
+
     try {
-      final file = File(path);
+      // 规范化路径（解析 .. 和符号链接）
+      final normalizedPath = path.canonicalize(requestPath);
+      final file = File(normalizedPath);
+
       if (!await file.exists()) {
-        print('[BodyMapper] File not found: $path');
+        print('[BodyMapper] File not found: $normalizedPath');
         return null;
       }
+
       return await file.readAsString();
     } catch (e) {
       print('[BodyMapper] Error reading file: $e');
       return null;
+    }
+  }
+
+  /// 路径安全校验
+  Future<bool> _isSafePath(String requestPath) async {
+    try {
+      // 检查危险模式
+      if (requestPath.contains('../') ||
+          requestPath.contains('..\\') ||
+          requestPath.contains('/..') ||
+          requestPath.contains('\\..') ||
+          requestPath.contains('~') ||
+          requestPath.contains(r'$')) {
+        print('[BodyMapper] Potentially unsafe path pattern: $requestPath');
+        return false;
+      }
+
+      // 规范化路径
+      final normalizedPath = path.canonicalize(requestPath);
+
+      // 获取应用文档目录
+      final appDir = await getApplicationDocumentsDirectory();
+      final appDirPath = path.canonicalize(appDir.path);
+
+      // 检查是否在应用目录内（允许应用目录及其子目录）
+      if (!normalizedPath.startsWith(appDirPath)) {
+        // 路径在应用目录外，记录警告但暂时允许
+        // 后续可通过配置白名单来限制
+        print('[BodyMapper] Path outside app directory: $normalizedPath');
+      }
+
+      return true;
+    } catch (e) {
+      print('[BodyMapper] Path validation error: $e');
+      return false;
     }
   }
 
@@ -331,16 +382,15 @@ class BodyMapperRule {
 /// 缓存管理器
 class BodyCache {
   final Map<String, _CacheEntry> _cache = {};
-  final Map<String, File> _watchedFiles = {};
+  final Map<String, StreamSubscription<WatchEvent>> _watchers = {};
 
-  /// 获取文件内容（带缓存）
+  /// 获取文件内容（带缓存和自动监听）
   Future<String> getFileContent(String path) async {
     final now = DateTime.now();
 
-    // 检查缓存
+    // 检查缓存（5 秒有效期）
     if (_cache.containsKey(path)) {
       final entry = _cache[path]!;
-      // 缓存 5 秒有效期
       if (now.difference(entry.cachedAt).inSeconds < 5) {
         return entry.content;
       }
@@ -353,12 +403,23 @@ class BodyCache {
     // 更新缓存
     _cache[path] = _CacheEntry(content, now);
 
-    // 设置文件监听
-    if (!_watchedFiles.containsKey(path)) {
-      _watchedFiles[path] = file;
-    }
+    // 启动文件监听（如果尚未监听）
+    _startWatching(path, file);
 
     return content;
+  }
+
+  void _startWatching(String path, File file) {
+    if (_watchers.containsKey(path)) return;
+
+    final watcher = FileWatcher(path);
+    _watchers[path] = watcher.events.listen((event) {
+      if (event.type == ChangeType.MODIFY ||
+          event.type == ChangeType.REMOVE) {
+        _cache.remove(path); // 清除缓存
+        print('[BodyCache] File changed, invalidated cache: $path');
+      }
+    });
   }
 
   /// 清除缓存
@@ -373,6 +434,15 @@ class BodyCache {
 
   /// 获取缓存统计
   int get cacheSize => _cache.length;
+
+  /// 清理资源
+  void dispose() {
+    for (final subscription in _watchers.values) {
+      subscription.cancel();
+    }
+    _watchers.clear();
+    _cache.clear();
+  }
 }
 
 class _CacheEntry {

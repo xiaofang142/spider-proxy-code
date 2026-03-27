@@ -4,6 +4,7 @@
 library script_engine_v2;
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:dart_eval/dart_eval.dart';
 import 'package:dart_eval/dart_eval_bridge.dart';
 import 'package:dart_eval/stdlib/core.dart';
@@ -53,14 +54,8 @@ class ScriptEngineV2 {
         print('[Script] $msg');
         return null;
       }),
-      'jsonDecode': Func1((str) {
-        // TODO: 实现 JSON 解析
-        return str;
-      }),
-      'jsonEncode': Func1((obj) {
-        // TODO: 实现 JSON 序列化
-        return obj.toString();
-      }),
+      'jsonDecode': Func1((str) => json.decode(str as String)),
+      'jsonEncode': Func1((obj) => json.encode(obj)),
     });
   }
 
